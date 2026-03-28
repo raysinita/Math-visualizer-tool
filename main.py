@@ -1,141 +1,269 @@
-from manim import *
+import streamlit as st
+import plotly.graph_objects as go
 import numpy as np
 
-class PowerOfPoint(Scene):
-    """Power of a Point — both inside and outside cases."""
+st.set_page_config(page_title="Power of a Point", layout="wide")
 
-    def construct(self):
-        circle = Circle(radius=2.5, color=TEAL)
-        self.play(Create(circle))
-        self.wait(0.3)
+st.title("Power of a Point")
+st.markdown("Drag the sliders to move point **P** and watch **PA · PB = PC · PD** hold invariant.")
 
-        # ── CASE 1: P inside the circle (intersecting chords) ──────────
-        title1 = Text("Case 1: P inside — intersecting chords",
-                      font_size=28).to_edge(UP)
-        self.play(Write(title1))
+# ── Sidebar controls ──────────────────────────────────────────────────────────
+with st.sidebar:
+    st.header("Controls")
+    R = st.slider("Circle radius", 1.0, 5.0, 3.0, 0.1)
+    px = st.slider("Point P — x", -8.0, 8.0, 4.5, 0.05)
+    py = st.slider("Point P — y", -8.0, 8.0, 0.5, 0.05)
+    angle1_deg = st.slider("Chord 1 angle (°)", 0, 170, 25, 1)
+    angle2_deg = st.slider("Chord 2 angle (°)", 0, 170, 110, 1)
+    st.divider()
+    show_similar = st.checkbox("Show similar triangles", value=False)
+    show_proof   = st.checkbox("Show proof sketch", value=False)
 
-        P_in = Dot(point=LEFT * 0.6 + DOWN * 0.3, color=PURPLE)
-        P_lbl = MathTex(r"P").next_to(P_in, UL, buff=0.1)
-        self.play(FadeIn(P_in), Write(P_lbl))
+# ── Geometry helpers ──────────────────────────────────────────────────────────
+def chord_intersect(px, py, angle_deg, R):
+    """Return two circle-intersection points for the line through (px,py) at angle."""
+    dx, dy = np.cos(np.radians(angle_deg)), np.sin(np.radians(angle_deg))
+    a = dx**2 + dy**2
+    b = 2*(px*dx + py*dy)
+    c = px**2 + py**2 - R**2
+    disc = b**2 - 4*a*c
+    if disc < 0:
+        return None, None
+    sq = np.sqrt(disc)
+    t1, t2 = (-b - sq)/(2*a), (-b + sq)/(2*a)
+    A = np.array([px + dx*t1, py + dy*t1])
+    B = np.array([px + dx*t2, py + dy*t2])
+    return A, B
 
-        # Chord 1: angle ~20 deg
-        A, B = self._chord_pts(P_in.get_center(), np.radians(20), 2.5)
-        chord1 = Line(A, B, color=BLUE)
-        dA = Dot(A, color=BLUE); lA = MathTex(r"A").next_to(dA, UL, buff=0.08)
-        dB = Dot(B, color=BLUE); lB = MathTex(r"B").next_to(dB, DR, buff=0.08)
+def seg_len(P, Q):
+    return np.linalg.norm(np.array(P) - np.array(Q))
 
-        # Chord 2: angle ~110 deg
-        C, D = self._chord_pts(P_in.get_center(), np.radians(110), 2.5)
-        chord2 = Line(C, D, color=RED)
-        dC = Dot(C, color=RED); lC = MathTex(r"C").next_to(dC, UL, buff=0.08)
-        dD = Dot(D, color=RED); lD = MathTex(r"D").next_to(dD, DR, buff=0.08)
+# ── Compute geometry ──────────────────────────────────────────────────────────
+P = np.array([px, py])
+inside = px**2 + py**2 < R**2
 
-        self.play(Create(chord1), FadeIn(dA, lA, dB, lB))
-        self.play(Create(chord2), FadeIn(dC, lC, dD, lD))
+A, B = chord_intersect(px, py, angle1_deg, R)
+C, D = chord_intersect(px, py, angle2_deg, R)
 
-        # Measure segments
-        PA = np.linalg.norm(P_in.get_center() - A)
-        PB = np.linalg.norm(P_in.get_center() - B)
-        PC = np.linalg.norm(P_in.get_center() - C)
-        PD = np.linalg.norm(P_in.get_center() - D)
+valid = A is not None and C is not None
 
-        eq1 = MathTex(
-            r"PA \cdot PB", r"=", r"PC \cdot PD",
-            r"\quad\Rightarrow\quad",
-            rf"{PA:.2f}" + r"\times" + rf"{PB:.2f}",
-            r"=",
-            rf"{PC:.2f}" + r"\times" + rf"{PD:.2f}",
-        ).scale(0.7).to_edge(DOWN)
-        eq1[0].set_color(BLUE)
-        eq1[2].set_color(RED)
+power = abs(px**2 + py**2 - R**2)
 
-        self.play(Write(eq1))
-        self.wait(2)
+if valid:
+    PA = seg_len(P, A); PB = seg_len(P, B)
+    PC = seg_len(P, C); PD = seg_len(P, D)
+    prod_AB = PA * PB
+    prod_CD = PC * PD
+    # Use signed products for inside case (t1*t2 is negative inside, abs gives power)
+    # For display always show absolute values
+    match_pct = 100 * (1 - abs(prod_AB - prod_CD) / max(prod_AB, 1e-9))
 
-        # Power = d² - r²
-        d_in = np.linalg.norm(P_in.get_center())
-        pow_in = abs(d_in**2 - 2.5**2)
-        pow_label = MathTex(
-            rfr"\text{{Power}} = |d^2 - r^2| = {pow_in:.2f}"
-        ).scale(0.65).next_to(eq1, UP, buff=0.15)
-        self.play(FadeIn(pow_label))
-        self.wait(1.5)
+# ── Metric cards ──────────────────────────────────────────────────────────────
+col1, col2, col3, col4 = st.columns(4)
 
-        # ── Animate P moving to show invariance ───────────────────────
-        self.play(FadeOut(eq1, pow_label, title1))
-        title2 = Text("PA·PB stays constant as chords rotate",
-                      font_size=26).to_edge(UP)
-        self.play(Write(title2))
+with col1:
+    mode = "Inside circle" if inside else "Outside circle"
+    st.metric("Mode", mode)
+with col2:
+    st.metric("Power of P  |d²−r²|", f"{power:.3f}")
+with col3:
+    if valid:
+        st.metric("PA · PB", f"{prod_AB:.3f}")
+with col4:
+    if valid:
+        delta = prod_CD - prod_AB
+        st.metric("PC · PD", f"{prod_CD:.3f}", delta=f"{delta:+.4f}", delta_color="off")
 
-        angle_tracker = ValueTracker(20)
+# ── Build Plotly figure ───────────────────────────────────────────────────────
+fig = go.Figure()
 
-        def update_chord1(mob):
-            ang = np.radians(angle_tracker.get_value())
-            A2, B2 = self._chord_pts(P_in.get_center(), ang, 2.5)
-            mob.put_start_and_end_on(A2, B2)
+fig.update_layout(
+    height=580,
+    margin=dict(l=10, r=10, t=10, b=10),
+    showlegend=True,
+    legend=dict(x=0.01, y=0.99, bgcolor="rgba(0,0,0,0)"),
+    xaxis=dict(
+        range=[-9, 9], scaleanchor="y", scaleratio=1,
+        gridcolor="#e8e8e8", zerolinecolor="#cccccc",
+        title="x"
+    ),
+    yaxis=dict(
+        range=[-9, 9],
+        gridcolor="#e8e8e8", zerolinecolor="#cccccc",
+        title="y"
+    ),
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+)
 
-        chord1.add_updater(update_chord1)
-        self.play(angle_tracker.animate.set_value(160), run_time=3, rate_func=there_and_back)
-        chord1.remove_updater(update_chord1)
-        self.wait(1)
+# Circle
+theta = np.linspace(0, 2*np.pi, 400)
+fig.add_trace(go.Scatter(
+    x=R*np.cos(theta), y=R*np.sin(theta),
+    mode="lines",
+    line=dict(color="#1D9E75", width=2.5),
+    name="Circle",
+    hoverinfo="skip"
+))
 
-        # ── CASE 2: P outside (secant-secant) ─────────────────────────
-        self.play(FadeOut(*self.mobjects))
-        circle2 = Circle(radius=2.5, color=TEAL)
-        self.play(Create(circle2))
+# Center
+fig.add_trace(go.Scatter(
+    x=[0], y=[0], mode="markers",
+    marker=dict(color="#1D9E75", size=6, symbol="circle"),
+    name="Center O", hovertemplate="O (0, 0)"
+))
 
-        title3 = Text("Case 2: P outside — secant-secant",
-                      font_size=28).to_edge(UP)
-        self.play(Write(title3))
+# Radius label
+fig.add_annotation(x=R/2, y=0.15, text=f"r = {R:.1f}", showarrow=False,
+                   font=dict(size=12, color="#1D9E75"))
 
-        P_out = Dot(point=RIGHT * 4.2, color=PURPLE)
-        P_lbl2 = MathTex(r"P").next_to(P_out, RIGHT, buff=0.1)
-        self.play(FadeIn(P_out), Write(P_lbl2))
+if valid:
+    # Chord 1 (blue)  A–B
+    fig.add_trace(go.Scatter(
+        x=[A[0], B[0]], y=[A[1], B[1]],
+        mode="lines",
+        line=dict(color="#185FA5", width=2),
+        name="Chord AB",
+        hoverinfo="skip"
+    ))
+    # Chord 2 (red)  C–D
+    fig.add_trace(go.Scatter(
+        x=[C[0], D[0]], y=[C[1], D[1]],
+        mode="lines",
+        line=dict(color="#993C1D", width=2),
+        name="Chord CD",
+        hoverinfo="skip"
+    ))
 
-        A2, B2 = self._secant_pts(P_out.get_center(), np.radians(170), 2.5)
-        C2, D2 = self._secant_pts(P_out.get_center(), np.radians(195), 2.5)
+    # Segment labels along chords
+    def midpt(P, Q, t=0.5):
+        return (P + Q*t*(1-t))  # just use lerp
 
-        s1 = Line(P_out.get_center(), A2, color=BLUE)
-        s2 = Line(P_out.get_center(), C2, color=RED)
-        dA2=Dot(A2,color=BLUE); lA2=MathTex(r"A").next_to(dA2,UL,buff=0.08)
-        dB2=Dot(B2,color=BLUE); lB2=MathTex(r"B").next_to(dB2,LEFT,buff=0.08)
-        dC2=Dot(C2,color=RED);  lC2=MathTex(r"C").next_to(dC2,DL,buff=0.08)
-        dD2=Dot(D2,color=RED);  lD2=MathTex(r"D").next_to(dD2,LEFT,buff=0.08)
+    for pts, label, color in [
+        ((P, A), "PA", "#185FA5"),
+        ((P, B), "PB", "#185FA5"),
+        ((P, C), "PC", "#993C1D"),
+        ((P, D), "PD", "#993C1D"),
+    ]:
+        mid = (pts[0] + pts[1]) / 2
+        fig.add_annotation(
+            x=mid[0], y=mid[1],
+            text=label,
+            showarrow=False,
+            font=dict(size=11, color=color),
+            bgcolor="rgba(255,255,255,0.7)",
+            borderpad=2
+        )
 
-        self.play(Create(s1), FadeIn(dA2,lA2,dB2,lB2))
-        self.play(Create(s2), FadeIn(dC2,lC2,dD2,lD2))
+    # Intersection points A, B, C, D
+    for pt, lbl, col in [(A,"A","#185FA5"),(B,"B","#185FA5"),
+                          (C,"C","#993C1D"),(D,"D","#993C1D")]:
+        fig.add_trace(go.Scatter(
+            x=[pt[0]], y=[pt[1]],
+            mode="markers+text",
+            marker=dict(color=col, size=9),
+            text=[lbl], textposition="top right",
+            textfont=dict(size=13, color=col),
+            showlegend=False,
+            hovertemplate=f"{lbl} ({pt[0]:.2f}, {pt[1]:.2f})"
+        ))
 
-        PA2=np.linalg.norm(P_out.get_center()-A2)
-        PB2=np.linalg.norm(P_out.get_center()-B2)
-        PC2=np.linalg.norm(P_out.get_center()-C2)
-        PD2=np.linalg.norm(P_out.get_center()-D2)
+    # Similar triangles overlay
+    if show_similar and inside:
+        # Draw triangles PAD and PCB (similar triangles proof)
+        tri1_x = [P[0], A[0], D[0], P[0]]
+        tri1_y = [P[1], A[1], D[1], P[1]]
+        tri2_x = [P[0], C[0], B[0], P[0]]
+        tri2_y = [P[1], C[1], B[1], P[1]]
+        fig.add_trace(go.Scatter(x=tri1_x, y=tri1_y, fill="toself",
+            fillcolor="rgba(24,95,165,0.1)", line=dict(color="#185FA5", width=1, dash="dot"),
+            name="△PAD", hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=tri2_x, y=tri2_y, fill="toself",
+            fillcolor="rgba(153,60,29,0.1)", line=dict(color="#993C1D", width=1, dash="dot"),
+            name="△PCB", hoverinfo="skip"))
 
-        eq2 = MathTex(
-            r"PA \cdot PB = PC \cdot PD",
-            rfr"\approx {PA2*PB2:.2f}"
-        ).scale(0.75).to_edge(DOWN)
-        self.play(Write(eq2))
-        self.wait(2.5)
+# Point P
+p_color = "#534AB7"
+fig.add_trace(go.Scatter(
+    x=[px], y=[py],
+    mode="markers+text",
+    marker=dict(color=p_color, size=13, line=dict(color="#3C3489", width=2)),
+    text=["P"], textposition="top right",
+    textfont=dict(size=14, color=p_color),
+    name="Point P",
+    hovertemplate=f"P ({px:.2f}, {py:.2f})<br>d = {np.sqrt(px**2+py**2):.3f}"
+))
 
-        self.play(FadeOut(*self.mobjects))
-        outro = Text("Power of a Point: d² − r² = constant",
-                     font_size=32, gradient=(BLUE, TEAL))
-        self.play(Write(outro))
-        self.wait(2)
+# Distance line from O to P
+fig.add_trace(go.Scatter(
+    x=[0, px], y=[0, py],
+    mode="lines",
+    line=dict(color=p_color, width=1, dash="dot"),
+    name=f"d = {np.sqrt(px**2+py**2):.2f}",
+    hoverinfo="skip"
+))
 
-    def _chord_pts(self, P, angle, R):
-        """Intersections of the line through P at `angle` with circle of radius R centered at origin."""
-        dx, dy = np.cos(angle), np.sin(angle)
-        px, py = P[0], P[1]
-        a = dx**2 + dy**2
-        b = 2*(px*dx + py*dy)
-        c = px**2 + py**2 - R**2
-        disc = b**2 - 4*a*c
-        t1 = (-b - np.sqrt(disc)) / (2*a)
-        t2 = (-b + np.sqrt(disc)) / (2*a)
-        A = np.array([px+dx*t1, py+dy*t1, 0])
-        B = np.array([px+dx*t2, py+dy*t2, 0])
-        return A, B
+# Power invariant annotation box
+if valid:
+    fig.add_annotation(
+        x=0.98, y=0.02,
+        xref="paper", yref="paper",
+        xanchor="right", yanchor="bottom",
+        text=(
+            f"<b>PA · PB</b> = {prod_AB:.3f}<br>"
+            f"<b>PC · PD</b> = {prod_CD:.3f}<br>"
+            f"<b>Power</b> = {power:.3f}<br>"
+            f"Match: {match_pct:.2f}%"
+        ),
+        showarrow=False,
+        bgcolor="rgba(238,237,254,0.95)",
+        bordercolor="#534AB7",
+        borderwidth=1,
+        font=dict(size=12, color="#3C3489"),
+        align="left"
+    )
 
-    def _secant_pts(self, P, angle, R):
-        return self._chord_pts(P, angle, R)
+st.plotly_chart(fig, use_container_width=True)
+
+# ── Proof sketch ──────────────────────────────────────────────────────────────
+if show_proof:
+    st.divider()
+    if inside:
+        st.subheader("Proof — intersecting chords (P inside)")
+        st.markdown(r"""
+Triangles **△PAD** and **△PCB** are similar because:
+- ∠APD = ∠CPB (vertical angles)
+- ∠DAP = ∠BCP (both inscribed in the same arc DB)
+
+From similarity: $\dfrac{PA}{PC} = \dfrac{PD}{PB}$
+
+Cross-multiplying: $PA \cdot PB = PC \cdot PD$
+
+This common value equals $r^2 - d^2$ where $d = |OP|$.
+        """)
+    else:
+        st.subheader("Proof — secant-secant (P outside)")
+        st.markdown(r"""
+Triangles **△PAD** and **△PCB** are similar because:
+- ∠P is shared
+- ∠PAD = ∠PCB (both subtend arc BD, same side)
+
+From similarity: $\dfrac{PA}{PC} = \dfrac{PD}{PB}$
+
+Cross-multiplying: $PA \cdot PB = PC \cdot PD$
+
+This common value equals $d^2 - r^2$ where $d = |OP|$.
+
+Special case — **tangent**: when the chord collapses to a tangent point T, $PT^2 = d^2 - r^2$.
+        """)
+
+# ── Explore more ─────────────────────────────────────────────────────────────
+st.divider()
+st.subheader("Explore")
+ec1, ec2, ec3 = st.columns(3)
+with ec1:
+    st.info("**Move P to the circle boundary**\nPower → 0, products → 0")
+with ec2:
+    st.info("**Rotate both chord angles together**\nProducts stay equal — that's the theorem")
+with ec3:
+    st.info("**Set P at origin**\nPA · PB = r² for every chord through center")
