@@ -1,2 +1,4 @@
 numpy
-manim
+plotly
+streamlit
+matplotlib
